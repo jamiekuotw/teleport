@@ -298,6 +298,10 @@ func (s *Server) reconcileResources(ctx context.Context, newResources types.Data
 	s.log.Debugf("Reconciling %v.", newResources)
 	// First remove databases that were removed or no longer match.
 	for _, current := range s.getDatabases() {
+		// Skip databases from static configuration.
+		if current.Origin() == types.OriginConfigFile {
+			continue
+		}
 		if db := newResources.Find(current.GetName()); db == nil {
 			s.log.Infof("%v removed, unregistering.", current)
 			if err := s.unregisterDatabase(ctx, current.GetName()); err != nil {
@@ -308,6 +312,7 @@ func (s *Server) reconcileResources(ctx context.Context, newResources types.Data
 	// Then add new databases if there are any or refresh those that were updated.
 	for _, new := range newResources {
 		if db := s.getDatabases().Find(new.GetName()); db == nil {
+			// Database with this name isn't registered yet, see if it matches.
 			if services.MatchDatabase(s.cfg.Server, new) {
 				s.log.Infof("%v added, registering.", new)
 				if err := s.registerDatabase(ctx, new); err != nil {
@@ -316,6 +321,10 @@ func (s *Server) reconcileResources(ctx context.Context, newResources types.Data
 			} else {
 				s.log.Debugf("%v doesn't match, not registering.", new)
 			}
+		} else if db.Origin() == types.OriginConfigFile {
+			// Do not overwrite databases from static configuration.
+			s.log.Infof("%v is part of static configuration, not registering %v.", db, new)
+			continue
 		} else if new.GetResourceID() != db.GetResourceID() {
 			// If labels were updated, the database may no longer match.
 			if services.MatchDatabase(s.cfg.Server, new) {

@@ -943,7 +943,7 @@ func applyDatabasesConfig(fc *FileConfig, cfg *service.Config) error {
 				InstanceID: database.GCP.InstanceID,
 			},
 		}
-		if err := db.Check(); err != nil {
+		if err := db.CheckAndSetDefaults(); err != nil {
 			return trace.Wrap(err)
 		}
 		cfg.Databases.Databases = append(cfg.Databases.Databases, db)
@@ -1387,7 +1387,7 @@ func Configure(clf *CommandLineFlags, cfg *service.Config) error {
 				InstanceID: clf.DatabaseGCPInstanceID,
 			},
 		}
-		if err := db.Check(); err != nil {
+		if err := db.CheckAndSetDefaults(); err != nil {
 			return trace.Wrap(err)
 		}
 		cfg.Databases.Databases = append(cfg.Databases.Databases, db)

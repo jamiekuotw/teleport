@@ -37,13 +37,20 @@ func TestWatcher(t *testing.T) {
 	ctx := context.Background()
 	testCtx := setupTestContext(ctx, t)
 
-	// Create database server that isn't proxying any databases initially and
+	// Make a static configuration database.
+	db0, err := makeDatabase("db0", map[string]string{
+		types.OriginLabel: types.OriginConfigFile,
+	})
+	require.NoError(t, err)
+
+	// Create database server that proxies one static database and
 	// watches for databases with label group=a.
 	resource, err := types.NewDatabaseServerV3(types.Metadata{
 		Name: testCtx.hostID,
 	}, types.DatabaseServerSpecV3{
-		HostID:   testCtx.hostID,
-		Hostname: constants.APIDomain,
+		HostID:    testCtx.hostID,
+		Hostname:  constants.APIDomain,
+		Databases: []*types.DatabaseV3{db0},
 		Selectors: []types.Selector{
 			{MatchLabels: types.LabelsToProto(types.Labels{
 				"group": []string{"a"},
@@ -69,7 +76,25 @@ func TestWatcher(t *testing.T) {
 	// It should be registered.
 	select {
 	case d := <-reconcileCh:
-		require.Empty(t, cmp.Diff(types.Databases{db1}, d,
+		sort.Sort(d)
+		require.Empty(t, cmp.Diff(types.Databases{db0, db1}, d,
+			cmpopts.IgnoreFields(types.Metadata{}, "ID"),
+		))
+	case <-time.After(time.Second):
+		t.Fatal("Didn't receive reconcile event after 1s.")
+	}
+
+	// Try to update db0 which is registered statically.
+	db0Updated, err := makeDatabase("db0", map[string]string{"group": "a"})
+	require.NoError(t, err)
+	err = testCtx.authServer.CreateDatabase(ctx, db0Updated)
+	require.NoError(t, err)
+
+	// It should not be registered, old db0 should remain.
+	select {
+	case d := <-reconcileCh:
+		sort.Sort(d)
+		require.Empty(t, cmp.Diff(types.Databases{db0, db1}, d,
 			cmpopts.IgnoreFields(types.Metadata{}, "ID"),
 		))
 	case <-time.After(time.Second):
@@ -85,7 +110,8 @@ func TestWatcher(t *testing.T) {
 	// It shouldn't be registered.
 	select {
 	case d := <-reconcileCh:
-		require.Empty(t, cmp.Diff(types.Databases{db1}, d,
+		sort.Sort(d)
+		require.Empty(t, cmp.Diff(types.Databases{db0, db1}, d,
 			cmpopts.IgnoreFields(types.Metadata{}, "ID"),
 		))
 	case <-time.After(time.Second):
@@ -101,7 +127,7 @@ func TestWatcher(t *testing.T) {
 	select {
 	case d := <-reconcileCh:
 		sort.Sort(d)
-		require.Empty(t, cmp.Diff(types.Databases{db1, db2}, d,
+		require.Empty(t, cmp.Diff(types.Databases{db0, db1, db2}, d,
 			cmpopts.IgnoreFields(types.Metadata{}, "ID"),
 		))
 	case <-time.After(time.Second):
@@ -116,7 +142,8 @@ func TestWatcher(t *testing.T) {
 	// Only db2 should remain registered.
 	select {
 	case d := <-reconcileCh:
-		require.Empty(t, cmp.Diff(types.Databases{db2}, d,
+		sort.Sort(d)
+		require.Empty(t, cmp.Diff(types.Databases{db0, db2}, d,
 			cmpopts.IgnoreFields(types.Metadata{}, "ID"),
 		))
 	case <-time.After(time.Second):
@@ -127,16 +154,18 @@ func TestWatcher(t *testing.T) {
 	err = testCtx.authServer.DeleteDatabase(ctx, db2.GetName())
 	require.NoError(t, err)
 
-	// Should be no registered databases.
+	// Only static database should remain.
 	select {
 	case d := <-reconcileCh:
-		require.Len(t, d, 0)
+		require.Empty(t, cmp.Diff(types.Databases{db0}, d,
+			cmpopts.IgnoreFields(types.Metadata{}, "ID"),
+		))
 	case <-time.After(time.Second):
 		t.Fatal("Didn't receive reconcile event after 1s.")
 	}
 }
 
-func makeDatabase(name string, labels map[string]string) (types.Database, error) {
+func makeDatabase(name string, labels map[string]string) (*types.DatabaseV3, error) {
 	return types.NewDatabaseV3(types.Metadata{
 		Name:   name,
 		Labels: labels,

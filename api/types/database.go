@@ -27,8 +27,8 @@ import (
 
 // Database represents a database proxied by a database server.
 type Database interface {
-	// Resource provides common resource methods.
-	Resource
+	// ResourceWithOrigin provides common resource methods.
+	ResourceWithOrigin
 	// GetNamespace returns the database namespace.
 	GetNamespace() string
 	// GetStaticLabels returns the database static labels.
@@ -114,6 +114,16 @@ func (d *DatabaseV3) SetResourceID(id int64) {
 // GetMetadata returns the database resource metadata.
 func (d *DatabaseV3) GetMetadata() Metadata {
 	return d.Metadata
+}
+
+// Origin returns the origin value of the resource.
+func (d *DatabaseV3) Origin() string {
+	return d.Metadata.Origin()
+}
+
+// SetOrigin sets the origin value of the resource.
+func (d *DatabaseV3) SetOrigin(origin string) {
+	d.Metadata.SetOrigin(origin)
 }
 
 // GetNamespace returns the database resource namespace.
